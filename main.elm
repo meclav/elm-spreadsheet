@@ -9,7 +9,7 @@ import Result exposing (Result)
 import Array exposing (Array, get, set)
 
 
-type Op = NiladicOp | MonadicOp | DyadicOp | VariadicOp
+type Op = Niladic NiladicOp | Monadic MonadicOp | Dyadic DyadicOp | Variadic VariadicOp
 type NiladicOp = ErrorOp
 type MonadicOp = Minus
 type DyadicOp = Sub | Pow
@@ -39,7 +39,6 @@ cellsReferenced cell =
       -> x
     Reference ref
       -> ref::x
-
     Formula (Leaf c')
       -> refs x c'
     Formula (Node op cs)
@@ -58,7 +57,7 @@ updateData data ix newContent =
       -> let
           data1 = set ix {cell | underlying = newContent, currentValue = Error } data
           data2 = addDependenciesFromNewCell data1 newContent
-          indicesToRecompute = case bfs data2 [] [ix] of
+          indicesToRecompute = case getRecomputeOrder data2 [] [ix] of
             Err (Message str)
               -> Err str
             Err (CircularDependencyDetected)
@@ -92,18 +91,30 @@ addDependenciesFromNewCell data cellContent =
 
 type BfsFailure = Message String | CircularDependencyDetected
 
-bfs: Array Cell -> List (GridId, List GridId) -> List GridId -> Result BfsFailure (List GridId)
-bfs data blacks greys =Err (Message "Implement me")
+--toposort could be better
+getRecomputeOrder: Array Cell -> List GridId -> List GridId -> Result BfsFailure (List GridId)
+getRecomputeOrder dataX blacksX greysX =
+  let algo data blacks greys =
+    case greys of
+      []
+        ->  Ok blacks
+      x::xs
+        ->  let
+            (blackDeps, deps) = List.partition (\d -> member d blacks ) (getDependentCells data x)
 
-  {-case greys of
-  []
-    -> Just blacks
-  x::xs
-    ->  get x data
-        |> map .dependentCells
-        |> map
+            in
+             Err CircularDependencyDetected
 
--}
+
+
+
+getDependentCells data x = case get x data of
+    Nothing-> []
+    Just deps -> deps
+
+insert: List (GridId, List GridId) -> GridId -> List GridId -> Result BfsFailure (List (GridId, List GridId))
+insert blacks elt deps = Ok blacks --TODO
+
 
 
 
