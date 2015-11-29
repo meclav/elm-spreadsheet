@@ -57,7 +57,7 @@ updateData data ix newContent =
       -> let
           data1 = set ix {cell | underlying = newContent, currentValue = Error } data
           data2 = addDependenciesFromNewCell data1 newContent
-          indicesToRecompute = case getRecomputeOrder data2 [] [ix] of
+          indicesToRecompute = case getRecomputeOrder data2 ix of
             Err (Message str)
               -> Err str
             Err (CircularDependencyDetected)
@@ -89,33 +89,53 @@ addDependenciesFromNewCell data cellContent =
     in
       updateCells data (cellsReferenced cellContent)
 
-type BfsFailure = Message String | CircularDependencyDetected
+type MyFailure = Message String | CircularDependencyDetected
 
 --toposort could be better
-getRecomputeOrder: Array Cell -> List GridId -> List GridId -> Result BfsFailure (List GridId)
-getRecomputeOrder dataX blacksX greysX =
-  let algo data blacks greys =
-    case greys of
-      []
-        ->  Ok blacks
-      x::xs
-        ->  let
-            (blackDeps, deps) = List.partition (\d -> member d blacks ) (getDependentCells data x)
+getRecomputeOrder: Array Cell -> GridId -> Result MyFailure (List GridId)
+getRecomputeOrder data start =
+  case visit data start (Just ([],[])) of
+    Nothing -> Err CircularDependencyDetected
+    Just res-> Ok (fst res)
 
+visit: Array Cell -> GridId -> Maybe (List GridId,List GridId)  -> Maybe (List GridId,List GridId)
+visit data node resultSoFar =
+  case resultSoFar of
+    Nothing
+      -> Nothing
+    Just (result, temporarilyMarked)
+      ->
+        if List.member node temporarilyMarked
+        then Nothing
+        else if not (List.member node result)
+          then
+            let
+              resultFurther = getDependentCells data node
+                            |> List.foldr (visit data) (Just (result, node::temporarilyMarked))
             in
-             Err CircularDependencyDetected
+            case resultFurther of
+              Nothing
+                -> Nothing
+              Just (resultLater, temporarilyMarkedLater)
+                -> Just (node::resultLater, List.filter (\n -> n == node) temporarilyMarkedLater)
+        else resultSoFar
 
-
+{--
+function visit(node n)
+    if n has a temporary mark then stop (not a DAG)
+    if n is not marked (i.e. has not been visited yet) then
+        mark n temporarily
+        for each node m with an edge from n to m do
+            visit(m)
+        mark n permanently
+        unmark n temporarily
+        add n to head of L
+-}
 
 
 getDependentCells data x = case get x data of
     Nothing-> []
-    Just deps -> deps
-
-insert: List (GridId, List GridId) -> GridId -> List GridId -> Result BfsFailure (List (GridId, List GridId))
-insert blacks elt deps = Ok blacks --TODO
-
-
+    Just cell -> cell.dependentCells
 
 
 {-
