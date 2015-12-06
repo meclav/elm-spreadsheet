@@ -9,18 +9,9 @@ import Result exposing (Result)
 import Array exposing (Array, get, set)
 
 
-type Op = Niladic NiladicOp | Monadic MonadicOp | Dyadic DyadicOp | Variadic VariadicOp
-type NiladicOp = ErrorOp
-type MonadicOp = Minus
-type DyadicOp = Sub | Pow
-type VariadicOp = Add | Mult
 
 type alias GridId = Int -- because using Array.set and Array.get
 
-type Atom = Number Float | Text String | Error
-type AST a = Node Op (List (AST a)) | Leaf a
-
-type CellContent = Value Atom | Reference GridId | Formula (AST CellContent)
 type alias Cell =
             { dependentCells: List GridId
             , underlying: CellContent
@@ -70,7 +61,45 @@ updateData data ix newContent =
 Recomputes current values based on supplied safe order.
 -}
 recompute: Array Cell -> List GridId -> Array Cell
-recompute data changed = data
+recompute data changed =
+  List.foldr (recomputeOne) data changed
+
+
+recomputeOne: GridId -> Array Cell -> Array Cell
+recomputeOne changedCellId data =
+    case get changedCellId data of
+        Nothing
+          -> data
+        Just cell
+          ->  let
+                getRef ref = Maybe.map .currentValue (get ref data)
+                newCell = {cell | currentValue = eval getRef cell.underlying }
+              in  set changedCellId newCell data
+
+type Atom = Number Float | Text String | Error
+type AST a = Node Op (List (AST a)) | Leaf a
+
+type CellContent = Value Atom | Reference GridId | Formula (AST CellContent)
+
+type Op = Niladic NiladicOp | Monadic MonadicOp | Dyadic DyadicOp | Variadic VariadicOp
+type NiladicOp = ErrorOp
+type MonadicOp = Minus
+type DyadicOp = Sub | Pow
+type VariadicOp = Add | Mult
+
+eval : (GridId -> Maybe Atom) -> CellContent -> Atom
+eval getRef underlying = case underlying of
+  Value atom
+    -> atom
+  Reference gridId
+    -> getRef gridId |> Maybe.withDefault Error
+  Formula (Leaf cellContent)
+    -> eval getRef cellContent
+  Formula (Node op asts)
+    -> doOp op (List.map (\ast -> eval getRef (Formula ast)) asts)
+
+doOp: Op -> List Atom -> Atom
+doOp op args = Error
 
 addDependenciesFromNewCell: Array Cell -> CellContent -> Array Cell
 addDependenciesFromNewCell data cellContent =
