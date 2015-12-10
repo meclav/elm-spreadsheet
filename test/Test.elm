@@ -2,6 +2,8 @@ import String
 import Graphics.Element exposing (Element)
 
 import Spreadsheet exposing (..)
+import SpreadsheetTypes exposing (..)
+import Parse exposing (..)
 import ElmTest exposing (..)
 
 testParse string result =

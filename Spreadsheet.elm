@@ -2,21 +2,9 @@ module Spreadsheet where
 import String
 import Result exposing (Result)
 import Array exposing (Array, get, set)
+import SpreadsheetTypes exposing (..)
 
-
-
-type alias GridId = Int -- because using Array.set and Array.get
-
-type alias Cell =
-            { dependentCells: List GridId
-            , underlying: CellContent
-            , currentValue : Atom
-            }
-type alias Grid =
-            { width : Int
-            , height : Int
-            , data  : Array Cell
-            }
+import Parse as P
 
 cellsReferenced: CellContent -> List GridId
 cellsReferenced cell =
@@ -31,9 +19,6 @@ cellsReferenced cell =
       -> x ++ List.concat (List.map (\c-> refs [] (Formula c)) cs )
   in refs [] cell
 
-parse: String -> Result String CellContent
-parse s = Ok (Value (Number 42))
---TODO
 
 updateData : Array Cell -> GridId -> CellContent -> Result String (Array Cell)
 updateData data ix newContent =
@@ -72,10 +57,7 @@ recomputeOne changedCellId data =
                 newCell = {cell | currentValue = eval getRef cell.underlying }
               in  set changedCellId newCell data
 
-type Atom = Number Float | Text String | Error
-type AST a = Node Op (List (AST a)) | Leaf a
 
-type CellContent = Value Atom | Reference GridId | Formula (AST CellContent)
 
 eval : (GridId -> Maybe Atom) -> CellContent -> Atom
 eval getRef underlying = case underlying of
@@ -88,18 +70,16 @@ eval getRef underlying = case underlying of
   Formula (Node op asts)
     -> doOp op (List.map (\ast -> eval getRef (Formula ast)) asts)
 
-type Op = Niladic NiladicOp | Monadic MonadicOp | Dyadic DyadicOp | Variadic VariadicOp
-type NiladicOp = ErrorOp
+
 doNiladic opName = case opName of
     ErrorOp -> Error
 
-type MonadicOp = Minus
 doMonadic opName x = case (opName,x) of
   (_, Error) -> Error
   (Minus, Number v) -> Number (-v)
   (Minus, _) -> Error
 
-type DyadicOp = Sub | Pow
+
 doDyadic opName x1 x2 = case (opName, x1, x2) of
   (_, _, Error) -> Error
   (_,Error,_) -> Error
@@ -108,7 +88,6 @@ doDyadic opName x1 x2 = case (opName, x1, x2) of
   (Pow, Number v1, Number v2) -> Number (v1^v2)
   (Pow, _,_) -> Error
 
-type VariadicOp = Add | Mult
 doVariadic opName xs = case (opName, xs) of
   (Add, xs)
     -> List.foldr (valueMap2 (\x y -> x+y)) (Number 0) xs
