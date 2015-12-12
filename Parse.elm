@@ -32,16 +32,62 @@ parseFormula s = Ok (Value (Number 1337))
 parseExpression: Parser NotMatched Atom
 parseExpression s = Err (NotMatched)
 
+type Token = Unknown String | FunctionName String | Bra | Ket | Plus | Minus | NumberToken Float | TextToken String --...
+type alias Tokenizer = String -> (String, List Token)
+
+tokens: String -> List Token
+tokens s =
+  let
+    tokensInternal s acc = case s of
+       ""
+        -> acc
+       _
+        ->
+          let
+              tokenizers : List Tokenizer
+              tokenizers = []
+              firstThatWorks remainingTokenizers s = case remainingTokenizers of
+                 []
+                  -> ("", [Unknown s]) --can't consume!
+                 t::ts
+                  -> case t s of
+                      (rem,[]) -> firstThatWorks ts s
+                      (rem, tokens) -> (rem,tokens)
+          in case firstThatWorks tokenizers s of
+            (rem, tokens)
+              -> tokensInternal rem (tokens++acc)
+  in tokensInternal s []
 
 
+tok regexString out s =
+  simpleTok (ourRegex regexString) (out::[]) s
 
-{-
-=? Need a bigger formula parser. Else use smaller parser.
+ctok regexWithCaptureGroup out s =
+  captureTok (ourRegex regexWithCaptureGroup) (\s-> (out s)::[]) s
 
-Try different parsers and get one you want? Like in the Scala pattern.
 
-What should an intermediate be?
-Maybe only tokenise later.
-=
+ourRegex regexString = Regex.regex ("^"++regexString++"(.*)")
 
--}
+-- regex of the form "^regex(.*)"
+simpleTok regex outTokens s =
+                case find (AtMost 1) regex  s of
+                    match::[]
+                      -> case match.submatches of
+                          Just theUnparsedBit :: []
+                            -> (theUnparsedBit, outTokens)
+                          _
+                            -> (s,[])
+                    _
+                      -> (s, [])
+
+-- regex of the form "^regexWithOneCaptureGroup(.*)"
+captureTok regex makeTokFromCaptureGroup s =
+                case find (AtMost 1) regex  s of
+                    match::[]
+                      -> case match.submatches of
+                          Just captureGroup :: Just theUnparsedBit :: []
+                            -> (theUnparsedBit, makeTokFromCaptureGroup captureGroup)
+                          _
+                            -> (s,[])
+                    _
+                      -> (s, [])
