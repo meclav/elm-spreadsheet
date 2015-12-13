@@ -2,6 +2,7 @@ module Parse where
 
 import SpreadsheetTypes exposing (..)
 import Regex exposing (..)
+import String exposing (toFloat)
 
 type NotMatched = NotMatched
 
@@ -45,7 +46,14 @@ tokens s =
         ->
           let
               tokenizers : List Tokenizer
-              tokenizers = []
+              tokenizers =
+                [tok "(" Bra
+                ,tok ")" Ket
+                ,tok "+" Plus
+                ,tok "-" Minus
+                ,floatTok
+
+                      ]
               firstThatWorks remainingTokenizers s = case remainingTokenizers of
                  []
                   -> ("", [Unknown s]) --can't consume!
@@ -58,15 +66,24 @@ tokens s =
               -> tokensInternal rem (tokens++acc)
   in tokensInternal s []
 
+floatTok = ctok "(\\d+(?:\\.\\d+)?)" (\n-> case String.toFloat n of 
+      Err e
+        -> TextToken n
+      Ok f
+        -> NumberToken f
+        )
 
-tok regexString out s =
+tok literalString out s =
+  simpleTok (ourRegex (Regex.escape literalString)) (out::[]) s
+
+rtok regexString out s =
   simpleTok (ourRegex regexString) (out::[]) s
 
 ctok regexWithCaptureGroup out s =
   captureTok (ourRegex regexWithCaptureGroup) (\s-> (out s)::[]) s
 
 
-ourRegex regexString = Regex.regex ("^"++regexString++"(.*)")
+ourRegex regexString = Regex.regex ("^(?: *)"++regexString++"(.*)")
 
 -- regex of the form "^regex(.*)"
 simpleTok regex outTokens s =
