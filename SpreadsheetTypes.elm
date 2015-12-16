@@ -16,8 +16,8 @@ type alias Grid =
             }
 
 type Atom = Number Float | Text String | Error
-type AST a = Node Op (List (AST a)) | Leaf a
-type CellContent = Value Atom | Reference GridId | Formula (AST CellContent)
+type AST a op = Node op (List (AST a op)) | Leaf a
+type CellContent = Value Atom | Reference GridId | Formula (AST CellContent Op)
 
 type Op = Niladic NiladicOp | Monadic MonadicOp | Dyadic DyadicOp | Variadic VariadicOp
 type NiladicOp = ErrorOp

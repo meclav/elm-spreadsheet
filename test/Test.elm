@@ -15,6 +15,9 @@ testParseNumber string float =
 testFloatTokenizer s tokExpected =
   defaultTest (assertEqual (tokExpected::[]) (snd <| floatTok s) )
 
+testTokens string result =
+  test ("Tokenising "++string++" :") (assertEqual result (tokens string))
+
 tests : Test
 tests =
     suite "Tests" [
@@ -32,6 +35,14 @@ tests =
           , testFloatTokenizer "1.3" (NumberToken 1.3)
           , testFloatTokenizer "   0 " (NumberToken 0)
           ]
+      ,  suite "Tokens"
+          [ testTokens "2+2*3-7" ([NumberToken 2, PlusToken, NumberToken 2, MultToken, NumberToken 3, MinusToken, NumberToken 7])
+          , testTokens "sum(2,2.0)" ([FunctionName "SUM", Bra, NumberToken 2, Comma, NumberToken 2.0, Ket])
+          , testTokens "sum(a2:bc72,c8)" (
+                [FunctionName "SUM", Bra,   ReferenceToken("A", 2),Colon,
+                 ReferenceToken("BC",72), Comma, ReferenceToken ("C",8),Ket])
+          ]
+    ,     test "Bracketing" (assertEqual [(Bra,1),(Bra,2), (NumberToken 5, 2), (Ket, 1), (Ket,0)] (stackifyTokens (tokens "((5))")))
     ]
 
 main : Element

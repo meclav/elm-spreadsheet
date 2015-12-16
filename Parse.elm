@@ -2,7 +2,7 @@ module Parse where
 
 import SpreadsheetTypes exposing (..)
 import Regex exposing (..)
-import String exposing (toFloat)
+import String exposing (toFloat,toInt,toUpper)
 
 type NotMatched = NotMatched
 
@@ -20,11 +20,7 @@ parse s =
 
 
 
-
-parseFormula: Parser String CellContent
-parseFormula s = Ok (Value (Number 1337))
-
-
+parseFormula s = (Ok (Value (Number 1337)))
 {-
  I am sure you can do this through a port
  Parse and eval arithmetic expressions as JavaScript
@@ -33,8 +29,37 @@ parseFormula s = Ok (Value (Number 1337))
 parseExpression: Parser NotMatched Atom
 parseExpression s = Err (NotMatched)
 
-type Token = Unknown String | FunctionName String | Bra | Ket | Plus | Minus | NumberToken Float | TextToken String --...
+--todo: range union and intersect, cell range according to http://www.nsl.com/k/excel.k
+type Token = Unknown String | FunctionName String | Bra | Ket | Comma
+            | PlusToken | MinusToken | MultToken | DivToken |PowToken
+            | NumberToken Float | TextToken String
+            | ReferenceToken Ref | Colon
+            | Quote
+            | Eq | Le | Gr| Neq| Leq| Greq
+
+type alias Ref = (String, Int)
 type alias Tokenizer = String -> (String, List Token)
+
+stackifyTokens: List Token -> List (Token, Int)
+stackifyTokens ts =
+  let stackifyTokensInternal ts n = case ts of
+    []
+      -> []
+    x::xs
+      -> let d = case x of
+          Bra -> 1
+          Ket -> -1
+          _   -> 0
+         in (x,n+d) :: (stackifyTokensInternal xs (n+d))
+  in stackifyTokensInternal ts 0
+
+{-
+type Atom = Number Float | Text String | Error
+type AST a op = Node op (List (AST a op)) | Leaf a
+type CellContent = Value Atom | Reference GridId | Formula (AST CellContent Op)
+-}
+type TokenTree = AST (List Token) ()
+
 
 tokens: String -> List Token
 tokens s =
@@ -49,10 +74,23 @@ tokens s =
               tokenizers =
                 [tok "(" Bra
                 ,tok ")" Ket
-                ,tok "+" Plus
-                ,tok "-" Minus
+                ,tok "," Comma
+                ,tok "+" PlusToken
+                ,tok "-" MinusToken
+                ,tok "*" MultToken
+                ,tok "/" DivToken
+                ,tok "^" PowToken
                 ,floatTok
-
+                ,ctok "(\\w+[\\w\\d\\.]*)\\(" (\s -> FunctionName (toUpper s) :: Bra::[])
+                ,referenceTok
+                ,tok ":" Colon
+                ,tok "\"" Quote --"=";"<";">";"<>";"<=";">="
+                ,tok "=" Eq
+                ,tok "<" Le
+                ,tok ">" Gr
+                ,tok "<>" Neq
+                ,tok "<=" Leq
+                ,tok ">=" Greq
                       ]
               firstThatWorks remainingTokenizers s = case remainingTokenizers of
                  []
@@ -63,15 +101,15 @@ tokens s =
                       (rem, tokens) -> (rem,tokens)
           in case firstThatWorks tokenizers s of
             (rem, tokens)
-              -> tokensInternal rem (tokens++acc)
+              -> tokensInternal rem (acc++tokens)
   in tokensInternal s []
 
-floatTok = ctok "(\\d+(?:\\.\\d+)?)" (\n-> case String.toFloat n of 
+floatTok = ctok "(\\d+(?:\\.\\d+)?)" (\n-> (case String.toFloat n of
       Err e
         -> TextToken n
       Ok f
         -> NumberToken f
-        )
+        )::[])
 
 tok literalString out s =
   simpleTok (ourRegex (Regex.escape literalString)) (out::[]) s
@@ -80,7 +118,7 @@ rtok regexString out s =
   simpleTok (ourRegex regexString) (out::[]) s
 
 ctok regexWithCaptureGroup out s =
-  captureTok (ourRegex regexWithCaptureGroup) (\s-> (out s)::[]) s
+  captureTok (ourRegex regexWithCaptureGroup) (\s-> (out s)) s
 
 
 ourRegex regexString = Regex.regex ("^(?: *)"++regexString++"(.*)")
@@ -104,6 +142,20 @@ captureTok regex makeTokFromCaptureGroup s =
                       -> case match.submatches of
                           Just captureGroup :: Just theUnparsedBit :: []
                             -> (theUnparsedBit, makeTokFromCaptureGroup captureGroup)
+                          _
+                            -> (s,[])
+                    _
+                      -> (s, [])
+
+referenceTok s = case find (AtMost 1) (ourRegex ("([a-zA-Z]+)(\\d+)"))  s of
+                    match::[]
+                      -> case match.submatches of
+                          Just rows::Just cols :: Just theUnparsedBit :: []
+                            -> case String.toInt cols of
+                                  Err e
+                                    -> (s,[])
+                                  Ok f
+                                    -> (theUnparsedBit, [ReferenceToken (toUpper rows, f)])
                           _
                             -> (s,[])
                     _
